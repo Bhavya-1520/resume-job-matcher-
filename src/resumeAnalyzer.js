@@ -24,9 +24,24 @@ function extractExperience(text) {
     return Math.round(parseFloat(phrase[1]));
   }
 
-  // 2. Infer from a date range like "2019 - Present" or "2018 to 2024".
+  // 2. "experience of 4 years" / "experience: 4 years" style.
+  const phrase2 = t.match(
+    /(?:experience|exp)\s*(?:of|:)?\s*(\d{1,2}(?:\.\d)?)\s*\+?\s*(?:years?|yrs?)/i
+  );
+  if (phrase2) {
+    return Math.round(parseFloat(phrase2[1]));
+  }
+
+  // 3. Infer from a date range like "2019 - Present" or "2018 to 2024".
   const years = estimateFromDateRanges(t);
   if (years != null) return years;
+
+  // 4. Last resort: a lone "5 years" / "5+ yrs" anywhere in the resume.
+  const lone = t.match(/(\d{1,2})\s*\+?\s*(?:years?|yrs?)\b/i);
+  if (lone) {
+    const n = parseInt(lone[1], 10);
+    if (n >= 0 && n <= 40) return n;
+  }
 
   return null; // unknown
 }

@@ -9,6 +9,7 @@
 // India-specific. They don't require any signup or credit card.
 
 const { extractRequiredYears } = require("./resumeAnalyzer");
+const { classifyJob } = require("./skillExtractor");
 const { fetchIndiaJobs } = require("./indiaJobs");
 
 const UA =
@@ -25,6 +26,7 @@ async function searchJobs(skills, opts = {}, limit = 30) {
 
   const location = (opts.location || "").trim().toLowerCase();
   const experience = typeof opts.experience === "number" ? opts.experience : null;
+  const field = opts.field || null; // the resume's detected category
 
   // 1. Prefer India jobs (company career boards).
   let indiaRaw = [];
@@ -36,7 +38,7 @@ async function searchJobs(skills, opts = {}, limit = 30) {
 
   let indiaScored = indiaRaw
     .map((job) => scoreJob(job, skills, location, experience))
-    .filter((job) => job.matchScore > 0);
+    .filter((job) => job.matchScore > 0 && inField(job, field));
   indiaScored.sort((a, b) => b.matchScore - a.matchScore);
 
   if (indiaScored.length > 0) {
@@ -64,10 +66,19 @@ async function searchJobs(skills, opts = {}, limit = 30) {
 
   const scored = raw
     .map((job) => scoreJob(job, skills, location, experience))
-    .filter((job) => job.matchScore > 0);
+    .filter((job) => job.matchScore > 0 && inField(job, field));
   scored.sort((a, b) => b.matchScore - a.matchScore);
 
   return { jobs: scored.slice(0, limit), scope: "international" };
+}
+
+// Keep a job only if it belongs to the resume's field. If we can't confidently
+// classify the job, we keep it (better to show than to wrongly drop).
+function inField(job, field) {
+  if (!field) return true;
+  const jobField = classifyJob(`${job.title} ${job.description}`);
+  if (!jobField) return true;
+  return jobField === field;
 }
 
 async function fetchRemotive(skills) {

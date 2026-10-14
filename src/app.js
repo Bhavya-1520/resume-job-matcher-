@@ -7,7 +7,7 @@ const path = require("path");
 const express = require("express");
 
 const { extractText } = require("./resumeParser");
-const { extractSkills } = require("./skillExtractor");
+const { extractSkills, detectField } = require("./skillExtractor");
 const { extractExperience, extractLocation } = require("./resumeAnalyzer");
 const { searchJobs, JobSearchError } = require("./jobSearch");
 
@@ -62,8 +62,9 @@ app.post("/api/match", async (req, res) => {
       });
     }
 
-    // 2. Extract skills, experience, and location from the resume.
+    // 2. Extract skills, field, experience, and location from the resume.
     const skills = extractSkills(text);
+    const { field } = detectField(text);
     const experience = extractExperience(text);
     const resumeLocation = extractLocation(text);
 
@@ -73,6 +74,7 @@ app.post("/api/match", async (req, res) => {
     if (skills.length === 0) {
       return res.json({
         skills: [],
+        field,
         experience,
         location: effectiveLocation,
         jobs: [],
@@ -80,11 +82,12 @@ app.post("/api/match", async (req, res) => {
       });
     }
 
-    // 3. Search jobs using skills + experience + location.
+    // 3. Search jobs using field + skills + experience + location.
     try {
       const { jobs, scope } = await searchJobs(skills, {
         location: effectiveLocation,
         experience,
+        field,
       });
       let message = "";
       if (jobs.length === 0) {
@@ -97,6 +100,7 @@ app.post("/api/match", async (req, res) => {
       }
       return res.json({
         skills,
+        field,
         experience,
         location: effectiveLocation,
         scope,
@@ -107,6 +111,7 @@ app.post("/api/match", async (req, res) => {
       if (e instanceof JobSearchError) {
         return res.json({
           skills,
+          field,
           experience,
           location: effectiveLocation,
           jobs: [],

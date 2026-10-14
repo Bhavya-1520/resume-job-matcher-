@@ -80,7 +80,7 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    renderSummary(data.skills || [], data.experience, data.location);
+    renderSummary(data.skills || [], data.experience, data.location, data.field);
 
     if (data.message) {
       showStatus(data.message, data.jobs && data.jobs.length === 0);
@@ -108,9 +108,14 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-function renderSummary(skills, experience, location) {
-  // Build the summary line (experience + location).
+function renderSummary(skills, experience, location, field) {
+  // Build the summary line (field + experience + location).
   const parts = [];
+  parts.push(
+    field
+      ? `Field: <strong>${escapeHtml(field)}</strong>`
+      : "Field: <strong>not detected</strong>"
+  );
   if (experience != null) {
     parts.push(`Experience: <strong>${experience}+ years</strong>`);
   } else {
