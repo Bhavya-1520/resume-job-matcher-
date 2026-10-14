@@ -38,8 +38,8 @@ async function searchJobs(skills, opts = {}, limit = 30) {
 
   let indiaScored = indiaRaw
     .map((job) => scoreJob(job, skills, location, experience))
-    .filter((job) => job.matchScore > 0 && inField(job, field));
-  indiaScored.sort((a, b) => b.matchScore - a.matchScore);
+    .filter((job) => job.skillCount > 0 && inField(job, field));
+  indiaScored.sort(byBestMatch);
 
   if (indiaScored.length > 0) {
     return { jobs: indiaScored.slice(0, limit), scope: "india" };
@@ -66,8 +66,8 @@ async function searchJobs(skills, opts = {}, limit = 30) {
 
   const scored = raw
     .map((job) => scoreJob(job, skills, location, experience))
-    .filter((job) => job.matchScore > 0 && inField(job, field));
-  scored.sort((a, b) => b.matchScore - a.matchScore);
+    .filter((job) => job.skillCount > 0 && inField(job, field));
+  scored.sort(byBestMatch);
 
   return { jobs: scored.slice(0, limit), scope: "international" };
 }
@@ -124,12 +124,16 @@ function scoreJob(job, skills, loc, experience) {
   const haystack = `${job.title} ${job.description}`.toLowerCase();
   const matched = skills.filter((s) => haystack.includes(s.toLowerCase()));
 
-  let score = matched.length;
+  // Number of skills matched — this is the primary ranking signal.
+  const skillCount = matched.length;
+
+  // Bonus points (location + experience) used only as a tiebreaker.
+  let bonus = 0;
 
   // Location: boost if the resume/requested location appears in the job.
   let locationMatch = false;
   if (loc && job.location && job.location.toLowerCase().includes(loc)) {
-    score += 3;
+    bonus += 3;
     locationMatch = true;
   }
 
@@ -139,10 +143,10 @@ function scoreJob(job, skills, loc, experience) {
   if (experience != null && requiredYears != null) {
     if (experience >= requiredYears) {
       experienceFit = "meets"; // candidate qualifies
-      score += 2;
+      bonus += 2;
     } else if (experience >= requiredYears - 1) {
       experienceFit = "close"; // within a year
-      score += 1;
+      bonus += 1;
     } else {
       experienceFit = "below";
     }
@@ -159,11 +163,20 @@ function scoreJob(job, skills, loc, experience) {
       job.description.slice(0, 300) +
       (job.description.length > 300 ? "..." : ""),
     matchedSkills: matched,
-    matchScore: score,
+    matchScore: skillCount, // shown to the user = number of skills matched
+    skillCount,
+    bonus,
     requiredYears,
     experienceFit,
     locationMatch,
   };
+}
+
+// Sort by number of skills matched (desc), then by bonus (location/experience)
+// as a tiebreaker.
+function byBestMatch(a, b) {
+  if (b.skillCount !== a.skillCount) return b.skillCount - a.skillCount;
+  return b.bonus - a.bonus;
 }
 
 function stripHtml(html) {
