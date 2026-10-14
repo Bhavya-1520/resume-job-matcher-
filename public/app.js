@@ -32,10 +32,6 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
-  const formData = new FormData();
-  formData.append("resume", file);
-  formData.append("location", document.getElementById("location").value);
-
   setLoading(true);
   hide(skillsSection);
   hide(jobsSection);
@@ -45,12 +41,21 @@ form.addEventListener("submit", async (e) => {
   );
 
   try {
+    // Read the file as base64 and send it as JSON. This avoids multipart
+    // form-data, which some mobile browsers handle unreliably.
+    const base64 = await fileToBase64(file);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     const resp = await fetch("/api/match", {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        location: document.getElementById("location").value,
+        data: base64,
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -186,4 +191,18 @@ function escapeHtml(str) {
 }
 function escapeAttr(str) {
   return escapeHtml(str).replace(/"/g, "&quot;");
+}
+
+// Read a File into a base64 string (without the data: URL prefix).
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || "";
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
 }

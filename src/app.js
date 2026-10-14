@@ -5,19 +5,16 @@ require("dotenv").config();
 
 const path = require("path");
 const express = require("express");
-const multer = require("multer");
 
 const { extractText } = require("./resumeParser");
 const { extractSkills } = require("./skillExtractor");
 const { searchJobs, JobSearchError } = require("./jobSearch");
 
 const app = express();
-const MAX_FILE_MB = 5;
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_MB * 1024 * 1024 },
-});
+// Accept JSON bodies with a base64-encoded resume (works reliably on mobile,
+// unlike multipart form-data).
+app.use(express.json({ limit: "6mb" }));
 
 // Allow the browser to call the API (handles CORS preflight on mobile).
 app.use((req, res, next) => {
@@ -37,18 +34,21 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/api/match", upload.single("resume"), async (req, res) => {
+app.post("/api/match", async (req, res) => {
   try {
-    if (!req.file) {
+    const { filename, data, location: loc } = req.body || {};
+
+    if (!data || !filename) {
       return res.status(400).json({ error: "No resume file was uploaded." });
     }
 
-    const location = (req.body.location || "").trim();
+    const buffer = Buffer.from(data, "base64");
+    const location = (loc || "").trim();
 
     // 1. Extract text from the resume.
     let text;
     try {
-      text = await extractText(req.file.originalname, req.file.buffer);
+      text = await extractText(filename, buffer);
     } catch (e) {
       return res.status(e.statusCode || 400).json({ error: e.message });
     }
@@ -93,15 +93,10 @@ app.post("/api/match", upload.single("resume"), async (req, res) => {
   }
 });
 
-// Multer errors (e.g., file too large) land here.
+// Catch body-parser errors (e.g., payload too large) and anything else.
 app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === "LIMIT_FILE_SIZE") {
-      return res
-        .status(400)
-        .json({ error: `File too large (max ${MAX_FILE_MB} MB).` });
-    }
-    return res.status(400).json({ error: err.message });
+  if (err && err.type === "entity.too.large") {
+    return res.status(400).json({ error: "File too large (max ~4 MB)." });
   }
   console.error(err);
   res.status(500).json({ error: "Unexpected server error." });
