@@ -1,7 +1,8 @@
 const form = document.getElementById("upload-form");
 const submitBtn = document.getElementById("submit-btn");
 const statusEl = document.getElementById("status");
-const skillsSection = document.getElementById("skills-section");
+const summarySection = document.getElementById("summary-section");
+const summaryEl = document.getElementById("resume-summary");
 const skillsEl = document.getElementById("skills");
 const jobsSection = document.getElementById("jobs-section");
 const jobsEl = document.getElementById("jobs");
@@ -33,7 +34,7 @@ form.addEventListener("submit", async (e) => {
   }
 
   setLoading(true);
-  hide(skillsSection);
+  hide(summarySection);
   hide(jobsSection);
   showStatus(
     `<span class="spinner"></span> Uploading "${file.name}" (${sizeMb} MB) and searching jobs...`,
@@ -79,7 +80,7 @@ form.addEventListener("submit", async (e) => {
       return;
     }
 
-    renderSkills(data.skills || []);
+    renderSummary(data.skills || [], data.experience, data.location);
 
     if (data.message) {
       showStatus(data.message, true);
@@ -107,19 +108,31 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-function renderSkills(skills) {
-  skillsEl.innerHTML = "";
-  if (!skills.length) {
-    hide(skillsSection);
-    return;
+function renderSummary(skills, experience, location) {
+  // Build the summary line (experience + location).
+  const parts = [];
+  if (experience != null) {
+    parts.push(`Experience: <strong>${experience}+ years</strong>`);
+  } else {
+    parts.push("Experience: <strong>not detected</strong>");
   }
+  parts.push(
+    location
+      ? `Location: <strong>${escapeHtml(location)}</strong>`
+      : "Location: <strong>not detected</strong>"
+  );
+  summaryEl.innerHTML = parts.join(" &nbsp;·&nbsp; ");
+
+  // Skills chips.
+  skillsEl.innerHTML = "";
   for (const s of skills) {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = s;
     skillsEl.appendChild(chip);
   }
-  show(skillsSection);
+
+  show(summarySection);
 }
 
 function renderJobs(jobs) {
@@ -135,14 +148,38 @@ function renderJobs(jobs) {
     const card = document.createElement("div");
     card.className = "job";
 
-    const salary = formatSalary(job.salaryMin, job.salaryMax);
-    const matchLine =
-      job.matchScore > 0
-        ? `<span class="match">★ ${job.matchScore} skill${job.matchScore > 1 ? "s" : ""} matched</span>`
-        : "";
+    const salary = job.salaryText ? escapeHtml(job.salaryText) : "";
+
+    // Build badges: skills matched, experience fit, location match.
+    const badges = [];
+    if (job.matchedSkills.length) {
+      badges.push(
+        `<span class="badge badge-skill">★ ${job.matchedSkills.length} skill${job.matchedSkills.length > 1 ? "s" : ""} matched</span>`
+      );
+    }
+    if (job.requiredYears != null) {
+      const fitClass =
+        job.experienceFit === "meets"
+          ? "badge-good"
+          : job.experienceFit === "below"
+          ? "badge-warn"
+          : "badge-neutral";
+      const fitText =
+        job.experienceFit === "meets"
+          ? `✓ You meet the ${job.requiredYears}+ yrs required`
+          : job.experienceFit === "close"
+          ? `~ Needs ${job.requiredYears}+ yrs (close)`
+          : job.experienceFit === "below"
+          ? `! Needs ${job.requiredYears}+ yrs`
+          : `Needs ${job.requiredYears}+ yrs`;
+      badges.push(`<span class="badge ${fitClass}">${fitText}</span>`);
+    }
+    if (job.locationMatch) {
+      badges.push(`<span class="badge badge-loc">📍 Location match</span>`);
+    }
 
     card.innerHTML = `
-      ${matchLine}
+      <div class="badges">${badges.join("")}</div>
       <h3><a href="${escapeAttr(job.url)}" target="_blank" rel="noopener">${escapeHtml(job.title)}</a></h3>
       <div class="meta">
         ${escapeHtml(job.company)}${job.location ? " · " + escapeHtml(job.location) : ""}${salary ? " · " + salary : ""}

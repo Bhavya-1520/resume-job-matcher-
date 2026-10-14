@@ -1,5 +1,5 @@
 // Search for jobs using FREE, no-registration job APIs and rank them
-// against resume skills. Uses the built-in global fetch (Node 18+).
+// against resume skills, experience, and location. Uses global fetch (Node 18+).
 //
 // Sources (no API key required):
 //   - Remotive   https://remotive.com/api/remote-jobs
@@ -8,15 +8,21 @@
 // Note: these are mostly remote / tech roles and are more global than
 // India-specific. They don't require any signup or credit card.
 
+const { extractRequiredYears } = require("./resumeAnalyzer");
+
 const UA =
   "Mozilla/5.0 (compatible; ResumeJobMatcher/1.0; +https://github.com)";
 
 class JobSearchError extends Error {}
 
-async function searchJobs(skills, location = "", limit = 30) {
+// opts: { location, experience } — experience is the candidate's years (number|null)
+async function searchJobs(skills, opts = {}, limit = 30) {
   if (!skills || skills.length === 0) {
     throw new JobSearchError("No skills were detected in the resume.");
   }
+
+  const location = (opts.location || "").trim().toLowerCase();
+  const experience = typeof opts.experience === "number" ? opts.experience : null;
 
   const settled = await Promise.allSettled([
     fetchRemotive(skills),
@@ -36,10 +42,8 @@ async function searchJobs(skills, location = "", limit = 30) {
     );
   }
 
-  // Score every job by skill + location overlap, keep ones that match.
-  const loc = location.trim().toLowerCase();
   const scored = raw
-    .map((job) => scoreJob(job, skills, loc))
+    .map((job) => scoreJob(job, skills, location, experience))
     .filter((job) => job.matchScore > 0);
 
   scored.sort((a, b) => b.matchScore - a.matchScore);
@@ -47,7 +51,6 @@ async function searchJobs(skills, location = "", limit = 30) {
 }
 
 async function fetchRemotive(skills) {
-  // Remotive supports a search term; use the top skill to narrow results.
   const term = encodeURIComponent(skills[0] || "");
   const url = `https://remotive.com/api/remote-jobs?limit=50&search=${term}`;
   const resp = await fetch(url, {
@@ -86,14 +89,32 @@ async function fetchArbeitnow() {
   }));
 }
 
-function scoreJob(job, skills, loc) {
+function scoreJob(job, skills, loc, experience) {
   const haystack = `${job.title} ${job.description}`.toLowerCase();
   const matched = skills.filter((s) => haystack.includes(s.toLowerCase()));
+
   let score = matched.length;
 
-  // Small boost if the requested location appears in the job location.
+  // Location: boost if the resume/requested location appears in the job.
+  let locationMatch = false;
   if (loc && job.location && job.location.toLowerCase().includes(loc)) {
-    score += 2;
+    score += 3;
+    locationMatch = true;
+  }
+
+  // Experience: compare candidate years to the job's required years.
+  const requiredYears = extractRequiredYears(job.description);
+  let experienceFit = "unknown";
+  if (experience != null && requiredYears != null) {
+    if (experience >= requiredYears) {
+      experienceFit = "meets"; // candidate qualifies
+      score += 2;
+    } else if (experience >= requiredYears - 1) {
+      experienceFit = "close"; // within a year
+      score += 1;
+    } else {
+      experienceFit = "below";
+    }
   }
 
   return {
@@ -101,8 +122,6 @@ function scoreJob(job, skills, loc) {
     company: job.company,
     location: job.location,
     url: job.url,
-    salaryMin: null,
-    salaryMax: null,
     salaryText: job.salary || "",
     source: job.source,
     description:
@@ -110,6 +129,9 @@ function scoreJob(job, skills, loc) {
       (job.description.length > 300 ? "..." : ""),
     matchedSkills: matched,
     matchScore: score,
+    requiredYears,
+    experienceFit,
+    locationMatch,
   };
 }
 

@@ -8,6 +8,7 @@ const express = require("express");
 
 const { extractText } = require("./resumeParser");
 const { extractSkills } = require("./skillExtractor");
+const { extractExperience, extractLocation } = require("./resumeAnalyzer");
 const { searchJobs, JobSearchError } = require("./jobSearch");
 
 const app = express();
@@ -61,27 +62,50 @@ app.post("/api/match", async (req, res) => {
       });
     }
 
-    // 2. Extract skills.
+    // 2. Extract skills, experience, and location from the resume.
     const skills = extractSkills(text);
+    const experience = extractExperience(text);
+    const resumeLocation = extractLocation(text);
+
+    // Use the typed location if given, otherwise fall back to the resume's.
+    const effectiveLocation = location || resumeLocation;
+
     if (skills.length === 0) {
       return res.json({
         skills: [],
+        experience,
+        location: effectiveLocation,
         jobs: [],
         message: "No recognizable skills were found in the resume.",
       });
     }
 
-    // 3. Search jobs.
+    // 3. Search jobs using skills + experience + location.
     try {
-      const jobs = await searchJobs(skills, location);
+      const jobs = await searchJobs(skills, {
+        location: effectiveLocation,
+        experience,
+      });
       const message =
         jobs.length === 0
           ? "No matching jobs found right now. Try again later or tweak your resume."
           : "";
-      return res.json({ skills, jobs, message });
+      return res.json({
+        skills,
+        experience,
+        location: effectiveLocation,
+        jobs,
+        message,
+      });
     } catch (e) {
       if (e instanceof JobSearchError) {
-        return res.json({ skills, jobs: [], message: e.message });
+        return res.json({
+          skills,
+          experience,
+          location: effectiveLocation,
+          jobs: [],
+          message: e.message,
+        });
       }
       throw e;
     }
