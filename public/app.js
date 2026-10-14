@@ -17,16 +17,16 @@ form.addEventListener("submit", async (e) => {
   }
 
   const file = fileInput.files[0];
+  const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
 
   // Vercel serverless functions reject request bodies larger than ~4.5 MB,
   // which shows up as a confusing "Failed to fetch". Catch it early.
   const MAX_MB = 4;
   if (file.size > MAX_MB * 1024 * 1024) {
-    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
     showStatus(
-      `Your file is ${sizeMb} MB, which is too large (max ${MAX_MB} MB). ` +
-        "Try a smaller PDF, or save/export your resume as a plain text (.txt) " +
-        "or lighter PDF and upload that.",
+      `Your file "${file.name}" is ${sizeMb} MB, which is too large ` +
+        `(max ${MAX_MB} MB). Save/export your resume as a plain text (.txt) ` +
+        "or a lighter PDF and upload that.",
       true
     );
     return;
@@ -39,7 +39,10 @@ form.addEventListener("submit", async (e) => {
   setLoading(true);
   hide(skillsSection);
   hide(jobsSection);
-  showStatus('<span class="spinner"></span> Reading your resume and searching jobs...', false);
+  showStatus(
+    `<span class="spinner"></span> Uploading "${file.name}" (${sizeMb} MB) and searching jobs...`,
+    false
+  );
 
   try {
     const controller = new AbortController();
