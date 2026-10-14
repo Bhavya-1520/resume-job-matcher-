@@ -19,6 +19,17 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_MB * 1024 * 1024 },
 });
 
+// Allow the browser to call the API (handles CORS preflight on mobile).
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Serve the frontend from /public.
 app.use(express.static(path.join(__dirname, "..", "public")));
 
