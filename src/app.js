@@ -82,18 +82,24 @@ app.post("/api/match", async (req, res) => {
 
     // 3. Search jobs using skills + experience + location.
     try {
-      const jobs = await searchJobs(skills, {
+      const { jobs, scope } = await searchJobs(skills, {
         location: effectiveLocation,
         experience,
       });
-      const message =
-        jobs.length === 0
-          ? "No matching jobs found right now. Try again later or tweak your resume."
-          : "";
+      let message = "";
+      if (jobs.length === 0) {
+        message =
+          "No matching jobs found right now. Try again later or tweak your resume.";
+      } else if (scope === "international") {
+        message =
+          "No India-based matches found right now, so showing international / " +
+          "remote roles instead.";
+      }
       return res.json({
         skills,
         experience,
         location: effectiveLocation,
+        scope,
         jobs,
         message,
       });

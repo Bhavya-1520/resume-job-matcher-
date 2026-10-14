@@ -83,12 +83,12 @@ form.addEventListener("submit", async (e) => {
     renderSummary(data.skills || [], data.experience, data.location);
 
     if (data.message) {
-      showStatus(data.message, true);
+      showStatus(data.message, data.jobs && data.jobs.length === 0);
     } else {
       hide(statusEl);
     }
 
-    renderJobs(data.jobs || []);
+    renderJobs(data.jobs || [], data.scope);
   } catch (err) {
     if (err.name === "AbortError") {
       showStatus(
@@ -135,14 +135,20 @@ function renderSummary(skills, experience, location) {
   show(summarySection);
 }
 
-function renderJobs(jobs) {
+function renderJobs(jobs, scope) {
   jobsEl.innerHTML = "";
   if (!jobs.length) {
     hide(jobsSection);
     return;
   }
 
-  jobsHeading.textContent = `Matching jobs (${jobs.length})`;
+  const scopeLabel =
+    scope === "india"
+      ? "India jobs"
+      : scope === "international"
+      ? "International / remote jobs"
+      : "Matching jobs";
+  jobsHeading.textContent = `${scopeLabel} (${jobs.length})`;
 
   for (const job of jobs) {
     const card = document.createElement("div");

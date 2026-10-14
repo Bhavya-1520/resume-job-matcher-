@@ -9,6 +9,7 @@
 // India-specific. They don't require any signup or credit card.
 
 const { extractRequiredYears } = require("./resumeAnalyzer");
+const { fetchIndiaJobs } = require("./indiaJobs");
 
 const UA =
   "Mozilla/5.0 (compatible; ResumeJobMatcher/1.0; +https://github.com)";
@@ -16,6 +17,7 @@ const UA =
 class JobSearchError extends Error {}
 
 // opts: { location, experience } — experience is the candidate's years (number|null)
+// Returns { jobs, scope } where scope is "india" or "international".
 async function searchJobs(skills, opts = {}, limit = 30) {
   if (!skills || skills.length === 0) {
     throw new JobSearchError("No skills were detected in the resume.");
@@ -24,6 +26,24 @@ async function searchJobs(skills, opts = {}, limit = 30) {
   const location = (opts.location || "").trim().toLowerCase();
   const experience = typeof opts.experience === "number" ? opts.experience : null;
 
+  // 1. Prefer India jobs (company career boards).
+  let indiaRaw = [];
+  try {
+    indiaRaw = await fetchIndiaJobs();
+  } catch {
+    indiaRaw = [];
+  }
+
+  let indiaScored = indiaRaw
+    .map((job) => scoreJob(job, skills, location, experience))
+    .filter((job) => job.matchScore > 0);
+  indiaScored.sort((a, b) => b.matchScore - a.matchScore);
+
+  if (indiaScored.length > 0) {
+    return { jobs: indiaScored.slice(0, limit), scope: "india" };
+  }
+
+  // 2. Fall back to international sources only if no India matches found.
   const settled = await Promise.allSettled([
     fetchRemotive(skills),
     fetchArbeitnow(),
@@ -34,7 +54,7 @@ async function searchJobs(skills, opts = {}, limit = 30) {
     if (r.status === "fulfilled") raw = raw.concat(r.value);
   }
 
-  if (raw.length === 0) {
+  if (raw.length === 0 && indiaRaw.length === 0) {
     throw new JobSearchError(
       "Could not reach the job sources. If you're on an office network, it " +
         "may be blocking job sites. Try a personal network, or deploy the app " +
@@ -45,9 +65,9 @@ async function searchJobs(skills, opts = {}, limit = 30) {
   const scored = raw
     .map((job) => scoreJob(job, skills, location, experience))
     .filter((job) => job.matchScore > 0);
-
   scored.sort((a, b) => b.matchScore - a.matchScore);
-  return scored.slice(0, limit);
+
+  return { jobs: scored.slice(0, limit), scope: "international" };
 }
 
 async function fetchRemotive(skills) {
