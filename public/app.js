@@ -16,8 +16,24 @@ form.addEventListener("submit", async (e) => {
     return;
   }
 
+  const file = fileInput.files[0];
+
+  // Vercel serverless functions reject request bodies larger than ~4.5 MB,
+  // which shows up as a confusing "Failed to fetch". Catch it early.
+  const MAX_MB = 4;
+  if (file.size > MAX_MB * 1024 * 1024) {
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    showStatus(
+      `Your file is ${sizeMb} MB, which is too large (max ${MAX_MB} MB). ` +
+        "Try a smaller PDF, or save/export your resume as a plain text (.txt) " +
+        "or lighter PDF and upload that.",
+      true
+    );
+    return;
+  }
+
   const formData = new FormData();
-  formData.append("resume", fileInput.files[0]);
+  formData.append("resume", file);
   formData.append("location", document.getElementById("location").value);
 
   setLoading(true);
@@ -26,11 +42,32 @@ form.addEventListener("submit", async (e) => {
   showStatus('<span class="spinner"></span> Reading your resume and searching jobs...', false);
 
   try {
-    const resp = await fetch("/api/match", { method: "POST", body: formData });
-    const data = await resp.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
+    const resp = await fetch("/api/match", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    // Read as text first so we can show something useful even if it's not JSON.
+    const text = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      showStatus(
+        `Server returned an unexpected response (status ${resp.status}). ` +
+          (text ? text.slice(0, 200) : "No details."),
+        true
+      );
+      return;
+    }
 
     if (!resp.ok) {
-      showStatus(data.error || "Something went wrong.", true);
+      showStatus(data.error || `Something went wrong (status ${resp.status}).`, true);
       return;
     }
 
@@ -44,7 +81,19 @@ form.addEventListener("submit", async (e) => {
 
     renderJobs(data.jobs || []);
   } catch (err) {
-    showStatus("Network error: " + err.message, true);
+    if (err.name === "AbortError") {
+      showStatus(
+        "The request took too long and timed out. Try again, or use a smaller resume file.",
+        true
+      );
+    } else {
+      showStatus(
+        "Network error: " +
+          err.message +
+          ". If you're on an office/corporate WiFi, try mobile data (4G/5G) instead.",
+        true
+      );
+    }
   } finally {
     setLoading(false);
   }
